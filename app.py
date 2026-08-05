@@ -6,11 +6,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import httpx
 import streamlit as st
+from dotenv import load_dotenv
 
 from agents.interview_coach import InterviewFeedback, generate_questions, get_feedback
 from agents.job_matcher import JobMatchResult, analyze_job
 from rag import store_answer
 from shared_context import list_jobs, load_job_context
+
+load_dotenv()
 
 st.set_page_config(page_title="Job Search Agent", page_icon="💼", layout="wide")
 

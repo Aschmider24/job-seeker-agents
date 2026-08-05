@@ -22,9 +22,12 @@ from urllib.parse import urlparse
 
 import anthropic
 import requests
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 from prompts import JOB_MATCHER_SYSTEM, build_cv_context, build_job_block
+
+load_dotenv()
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
