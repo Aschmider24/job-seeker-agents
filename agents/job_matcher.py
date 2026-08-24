@@ -15,8 +15,8 @@ MAX_TOKENS = 4096
 
 class JobMatchResult(BaseModel):
     fit_score: int = Field(ge=0, le=10, description="Overall fit 0–10.")
-    strengths: list = Field(description="Ways the CV meets or exceeds requirements.")
-    gaps: list = Field(description="Requirements the CV does not evidence.")
+    strengths: list[str] = Field(description="Ways the CV meets or exceeds requirements.")
+    gaps: list[str] = Field(description="Requirements the CV does not evidence.")
     cover_letter: str = Field(description="Tailored cover letter in the candidate's voice.")
 
 

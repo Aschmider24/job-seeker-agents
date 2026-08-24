@@ -20,7 +20,7 @@ MAX_TOKENS = 2048
 
 
 class QuestionList(BaseModel):
-    questions: list
+    questions: list[str]
 
 
 class InterviewFeedback(BaseModel):
