@@ -19,3 +19,6 @@ output/*.md
 # Local agent data / job descriptions (not versioned)
 memory/
 jobs/
+
+# Written by the deploy workflow, not versioned
+VERSION
