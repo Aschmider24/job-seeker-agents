@@ -4,6 +4,10 @@ __pycache__/
 .venv/
 venv/
 
+# Node / frontend
+node_modules/
+dist/
+
 # OS
 .DS_Store
 
@@ -13,12 +17,8 @@ venv/
 # Secrets
 .env
 
-# Generated reports (keep the directory via .gitkeep)
-output/*.md
-
-# Local agent data / job descriptions (not versioned)
+# Local agent data (not versioned) — also covers memory/jobs/
 memory/
-jobs/
 
 # Written by the deploy workflow, not versioned
 VERSION

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.antoine.jobsearchagent-backend</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/antoineschmider/job-search-agent/backend/.venv/bin/uvicorn</string>
+        <string>app.main:app</string>
+        <string>--host=0.0.0.0</string>
+        <string>--port=8000</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/antoineschmider/job-search-agent/backend</string>
+
+    <!-- CORS: must list every origin the frontend is actually reached at.
+         Verify/adjust against the mini's real Tailscale hostname/IP and the
+         frontend's port (4173, see the -frontend plist) before relying on this. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ALLOWED_ORIGINS</key>
+        <string>http://100.114.228.0:4173,http://Mac-mini-de-antoine.local:4173</string>
+    </dict>
+
+    <key>UserName</key>
+    <string>antoineschmider</string>
+
+    <!-- Start on boot, restart automatically if it ever crashes -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/antoineschmider/job-search-agent/backend/backend.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/antoineschmider/job-search-agent/backend/backend.err.log</string>
+</dict>
+</plist>
