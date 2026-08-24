@@ -1,19 +1,14 @@
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import anthropic
 from pydantic import BaseModel
 
-from prompts import (
+from app.prompts import (
     QUESTION_GEN_SYSTEM,
     INTERVIEW_FEEDBACK_SYSTEM,
     build_question_gen_prompt,
     build_feedback_prompt,
 )
-from shared_context import read_cv, read_projects, load_job_context
-from rag import retrieve_similar
+from app.shared_context import read_cv, read_projects, load_job_context
+from app.rag import retrieve_similar
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 2048

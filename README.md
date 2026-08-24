@@ -1,6 +1,7 @@
 # Job Search Agent
 
-A Streamlit app that uses the Claude API to help with job applications:
+A FastAPI backend + React/TypeScript frontend that use the Claude API to help
+with job applications:
 
 - **Job Matcher** — paste (or fetch by URL) a job description and get a fit
   score out of 10, strengths, gaps, and a tailored cover letter.
@@ -17,32 +18,47 @@ persists across sessions.
 
 ```
 job-search-agent/
-├── app.py                    # Streamlit UI (Job Matcher + Interview Coach)
-├── agents/
-│   ├── job_matcher.py         # fit scoring + cover letter generation
-│   └── interview_coach.py     # question generation + answer feedback
-├── prompts.py                 # all prompts, kept separate from agent logic
-├── shared_context.py          # reads/writes memory/ (CV, projects, per-job files)
-├── rag.py                     # ChromaDB store for approved interview answers
-├── memory/                    # persistent data (gitignored)
-│   ├── cv.pdf                 # your CV, read by every agent
-│   ├── projects.md            # optional extra context (side projects, etc.)
-│   ├── chroma_db/              # vector store of approved interview answers
-│   └── jobs/<job_name>/       # per-job artifacts, created by the app
+├── backend/                    # FastAPI app
+│   ├── app/
+│   │   ├── main.py             # routes
+│   │   ├── agents/
+│   │   │   ├── job_matcher.py     # fit scoring + cover letter generation
+│   │   │   └── interview_coach.py # question generation + answer feedback
+│   │   ├── schemas.py          # API request/response models
+│   │   ├── url_fetch.py        # job posting URL -> plain text
+│   │   ├── prompts.py          # all prompts, kept separate from agent logic
+│   │   ├── shared_context.py   # reads/writes memory/ (CV, projects, per-job files)
+│   │   └── rag.py              # ChromaDB store for approved interview answers
+│   └── requirements.txt
+├── frontend/                   # React + TypeScript (Vite)
+│   └── src/
+│       ├── api/client.ts       # talks to the backend's /api/* routes
+│       └── pages/               # Job Matcher, Past Matches, Interview Coach
+├── memory/                      # persistent data (gitignored)
+│   ├── cv.pdf                   # your CV, read by every agent
+│   ├── projects.md              # optional extra context (side projects, etc.)
+│   ├── chroma_db/                # vector store of approved interview answers
+│   └── jobs/<job_name>/          # per-job artifacts, created by the backend
 │       ├── job_description.txt
 │       ├── fit_analysis.md
 │       ├── cover_letter.md
 │       └── interview_answers.md
-├── agent.py                   # standalone CLI: batch-analyze jobs/*.txt (legacy)
-└── requirements.txt
+└── deploy/                      # Mac mini deployment (see deploy/README.md)
 ```
 
 ## Setup
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+# Backend
+cd backend
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+cd ..
 cp .env.example .env   # then edit .env and set your real ANTHROPIC_API_KEY
+
+# Frontend
+cd frontend
+npm install
 ```
 
 Add your CV to `memory/cv.pdf` (create the `memory/` directory if it doesn't
@@ -52,9 +68,19 @@ scoring and cover letters.
 
 ## Use
 
+Run both in separate terminals:
+
 ```bash
-streamlit run app.py
+# Terminal 1 — backend (http://localhost:8000)
+cd backend && source .venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+
+# Terminal 2 — frontend (http://localhost:5173)
+cd frontend
+npm run dev
 ```
+
+Open http://localhost:5173.
 
 1. **Job Matcher** — enter a job name, paste a job description (or fetch one
    from a URL), and optionally add custom instructions (tone, what to
@@ -68,14 +94,12 @@ streamlit run app.py
 
 ## Notes
 
-- The model is set in `agents/job_matcher.py` and `agents/interview_coach.py`
-  (`MODEL = "claude-sonnet-4-6"`). Change it in both if you want a different
-  model.
-- `memory/` and `jobs/` are gitignored — they hold your personal data and
-  generated content, not project source.
-- `agent.py` is a standalone CLI left over from an earlier version of this
-  project: it reads `cv.pdf`/`cv.txt` and `jobs/*.txt` directly from the repo
-  root (not `memory/`) and writes one Markdown report per job to `output/`.
-  It doesn't share state with the Streamlit app. Run it with
-  `python agent.py [file-or-url ...]` if you just want quick one-off reports
-  without the UI.
+- The model is set in `backend/app/agents/job_matcher.py` and
+  `backend/app/agents/interview_coach.py` (`MODEL = "claude-sonnet-4-6"`).
+  Change it in both if you want a different model.
+- `memory/` is gitignored — it holds your personal data and generated
+  content, not project source.
+- The backend reads `.env` from the repo root (not `backend/.env`) — see
+  `backend/app/main.py`.
+- In production the backend and frontend run as two separate services on
+  the Mac mini; see `deploy/README.md`.
