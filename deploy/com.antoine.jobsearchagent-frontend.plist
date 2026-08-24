@@ -8,14 +8,12 @@
     <!-- Serves the already-built frontend/dist/ — building happens once per
          deploy (see deploy.sh / deploy.yml), not on every service start.
 
-         `serve` is a Node script (`#!/usr/bin/env node` shebang) — launchd
-         does not source shell rc files, so if Node is managed via nvm on
-         the mini rather than a fixed system path (Homebrew etc.), this will
-         fail to start with "node: command not found" even though it works
-         fine over SSH. If that happens, add an EnvironmentVariables/PATH
-         entry below pointing at the real node bin dir, or an
-         <string>/full/path/to/node</string> as ProgramArguments[0] ahead
-         of `serve`. See deploy/README.md. -->
+         Node must be installed system-wide (Homebrew), not via nvm — see
+         deploy/README.md. Even so, launchd's default PATH is just
+         /usr/bin:/bin:/usr/sbin:/sbin, which doesn't include Homebrew's bin
+         dir, so `serve`'s `#!/usr/bin/env node` shebang would still fail to
+         resolve `node` without the explicit PATH below (covers both Apple
+         Silicon and Intel Homebrew prefixes). -->
     <key>ProgramArguments</key>
     <array>
         <string>/Users/antoineschmider/job-search-agent/frontend/node_modules/.bin/serve</string>
@@ -28,6 +26,12 @@
 
     <key>WorkingDirectory</key>
     <string>/Users/antoineschmider/job-search-agent/frontend</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
 
     <key>UserName</key>
     <string>antoineschmider</string>
