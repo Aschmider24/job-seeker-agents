@@ -1,0 +1,42 @@
+name: Deploy to Mac mini
+
+# Runs on the self-hosted runner installed on the Mac mini itself (see
+# deploy/README.md), so no inbound network access to the mini is needed.
+#
+# SECURITY: this repo is public and has a self-hosted runner attached.
+# NEVER add a `pull_request` or `pull_request_target` trigger to this (or
+# any) workflow in this repo — that lets anyone's fork PR run code on the
+# Mac mini with zero merge required. `push` (to a protected branch only
+# people with write access can reach) and `workflow_dispatch` are the only
+# safe triggers here. See deploy/README.md.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write VERSION
+        run: echo "v$(date +%Y.%m.%d)-$(git rev-parse --short HEAD)" > VERSION
+
+      - name: Sync code into the live app directory
+        run: |
+          rsync -av \
+            --include='agents/***' \
+            --include='app.py' --include='agent.py' --include='prompts.py' \
+            --include='rag.py' --include='shared_context.py' \
+            --include='requirements.txt' --include='README.md' --include='VERSION' \
+            --exclude='*' \
+            "$GITHUB_WORKSPACE"/ "$HOME/job-search-agent/"
+
+      - name: Install dependencies
+        run: |
+          cd "$HOME/job-search-agent"
+          source .venv/bin/activate
+          pip install -q -r requirements.txt
+
+      - name: Restart the app service
+        run: sudo launchctl kickstart -k system/com.antoine.jobsearchagent

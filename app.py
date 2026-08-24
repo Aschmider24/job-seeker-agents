@@ -1,3 +1,4 @@
+import re
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
@@ -17,7 +18,15 @@ load_dotenv()
 
 st.set_page_config(page_title="Job Search Agent", page_icon="💼", layout="wide")
 
-page = st.sidebar.radio("Navigation", ["🎯  Job Matcher", "🎤  Interview Coach"], label_visibility="collapsed")
+NAV_PAGES = ["🎯  Job Matcher", "📁  Past Matches", "🎤  Interview Coach"]
+if "nav_page" not in st.session_state:
+    st.session_state["nav_page"] = NAV_PAGES[0]
+
+page = st.sidebar.radio("Navigation", NAV_PAGES, key="nav_page", label_visibility="collapsed")
+
+_version_file = Path(__file__).parent / "VERSION"
+_version = _version_file.read_text().strip() if _version_file.exists() else "dev"
+st.sidebar.caption(f"Version {_version}")
 
 
 # ── URL fetching ──────────────────────────────────────────────────────────────
@@ -144,6 +153,71 @@ if page == "🎯  Job Matcher":
         _show_match_result(st.session_state[f"jm_{job_name}"])
 
 
+# ── Past Matches ──────────────────────────────────────────────────────────────
+
+elif page == "📁  Past Matches":
+    st.title("Past Matches")
+    st.caption("Everything the Job Matcher has saved to memory/jobs/, in one place.")
+
+    jobs = list_jobs()
+    if not jobs:
+        st.info("No past matches yet. Run the Job Matcher to analyze a job.")
+        st.stop()
+
+    def _fit_score(job: str) -> int | None:
+        m = re.search(r"\*\*Score:\*\*\s*(\d+)\s*/\s*10", load_job_context(job).get("fit_analysis", ""))
+        return int(m.group(1)) if m else None
+
+    scores = {job: _fit_score(job) for job in jobs}
+
+    filter_col, sort_col = st.columns([3, 2])
+    with filter_col:
+        search = st.text_input("Filter by name", placeholder="e.g. stripe", label_visibility="collapsed")
+    with sort_col:
+        sort_choice = st.selectbox("Sort by", ["Name", "Fit score (high → low)"], label_visibility="collapsed")
+
+    visible = [j for j in jobs if search.lower() in j.lower()] if search else list(jobs)
+    if sort_choice == "Fit score (high → low)":
+        visible = sorted(visible, key=lambda j: (scores[j] is None, -(scores[j] or 0)))
+
+    if not visible:
+        st.info("No jobs match that filter.")
+
+    for job in visible:
+        ctx = load_job_context(job)
+        score = scores[job]
+        badge = f"{score} / 10" if score is not None else "—"
+        with st.expander(f"**{job}**   ·   fit {badge}"):
+            if "fit_analysis" in ctx:
+                st.markdown(ctx["fit_analysis"])
+            else:
+                st.caption("No fit analysis saved for this job.")
+
+            if "job_description" in ctx:
+                with st.expander("Job description", expanded=False):
+                    st.text(ctx["job_description"])
+
+            if "cover_letter" in ctx:
+                with st.expander("Cover letter", expanded=False):
+                    st.markdown(ctx["cover_letter"])
+                    st.download_button(
+                        "Download cover letter",
+                        data=ctx["cover_letter"],
+                        file_name=f"{job}_cover_letter.md",
+                        mime="text/markdown",
+                        key=f"dl_{job}",
+                    )
+
+            if "interview_answers" in ctx:
+                with st.expander("Interview answers", expanded=False):
+                    st.markdown(ctx["interview_answers"])
+
+            if st.button("Open in Interview Coach →", key=f"open_ic_{job}"):
+                st.session_state["ic_job"] = job
+                st.session_state["nav_page"] = "🎤  Interview Coach"
+                st.rerun()
+
+
 # ── Interview Coach ───────────────────────────────────────────────────────────
 
 elif page == "🎤  Interview Coach":
@@ -169,7 +243,8 @@ elif page == "🎤  Interview Coach":
         st.info("No jobs found. Run the Job Matcher first to create a job entry.")
         st.stop()
 
-    selected = st.selectbox("Select a job", jobs, index=0)
+    default_idx = jobs.index(st.session_state.ic_job) if st.session_state.ic_job in jobs else 0
+    selected = st.selectbox("Select a job", jobs, index=default_idx)
 
     if selected != st.session_state.ic_job:
         # reset everything when the job changes
