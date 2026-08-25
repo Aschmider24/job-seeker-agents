@@ -20,7 +20,7 @@ from agents.interview_coach import (
 )
 from agents.job_matcher import JobScoreResult, generate_cover_letter, save_score, score_job
 from rag import store_answer
-from shared_context import list_jobs, load_job_context, rename_job, save_job_file
+from shared_context import delete_job, list_jobs, load_job_context, rename_job, save_job_file
 
 load_dotenv()
 
@@ -431,10 +431,32 @@ elif page == "📁  Past Matches":
                 with st.expander("Interview answers", expanded=False):
                     st.markdown(ctx["interview_answers"])
 
-            if st.button("Open in Interview Coach →", key=f"open_ic_{job}"):
-                st.session_state["ic_job"] = job
-                st.session_state["nav_page"] = "🎤  Interview Coach"
-                st.rerun()
+            col_open, col_delete = st.columns([3, 1])
+            with col_open:
+                if st.button("Open in Interview Coach →", key=f"open_ic_{job}"):
+                    st.session_state["ic_job"] = job
+                    st.session_state["nav_page"] = "🎤  Interview Coach"
+                    st.rerun()
+
+            confirm_key = f"pm_confirm_delete_{job}"
+            with col_delete:
+                if not st.session_state.get(confirm_key):
+                    if st.button("🗑️  Delete", key=f"pm_delete_{job}"):
+                        st.session_state[confirm_key] = True
+                        st.rerun()
+
+            if st.session_state.get(confirm_key):
+                st.warning(f"Permanently delete **{job}** from memory? This can't be undone.")
+                confirm_col, cancel_col = st.columns(2)
+                with confirm_col:
+                    if st.button("Yes, delete", key=f"pm_delete_confirm_{job}", type="primary"):
+                        delete_job(job)
+                        del st.session_state[confirm_key]
+                        st.rerun()
+                with cancel_col:
+                    if st.button("Cancel", key=f"pm_delete_cancel_{job}"):
+                        del st.session_state[confirm_key]
+                        st.rerun()
 
 
 # ── Interview Coach ───────────────────────────────────────────────────────────

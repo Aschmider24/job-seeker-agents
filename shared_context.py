@@ -1,5 +1,6 @@
 """Assembles context from memory/ for any agent."""
 
+import shutil
 from pathlib import Path
 
 from pypdf import PdfReader
@@ -68,6 +69,14 @@ def rename_job(old_name: str, new_name: str) -> None:
         raise FileExistsError(f"A job named {new_name!r} already exists.")
     new_dir.parent.mkdir(parents=True, exist_ok=True)
     old_dir.rename(new_dir)
+
+
+def delete_job(job_name: str) -> None:
+    """Permanently remove memory/jobs/<job_name>/ and everything saved under it."""
+    job_dir = _job_dir(job_name)
+    if not job_dir.exists():
+        raise FileNotFoundError(f"No saved job named {job_name!r}.")
+    shutil.rmtree(job_dir)
 
 
 def list_jobs() -> list:
