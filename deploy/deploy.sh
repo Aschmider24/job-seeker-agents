@@ -36,8 +36,6 @@ echo "==> Reinstalling backend dependencies (in case requirements.txt changed) .
 ssh "$HOST" "cd $REMOTE_DIR/backend && source .venv/bin/activate && pip install -q -r requirements.txt"
 
 echo "==> Installing frontend dependencies and rebuilding ..."
-# Requires Node installed system-wide (Homebrew) on the mini, not via nvm —
-# see deploy/README.md.
 ssh "$HOST" "cd $REMOTE_DIR/frontend && npm ci --silent && npm run build --silent"
 
 echo "==> Restarting the backend + frontend services (requires sudo on the mini) ..."

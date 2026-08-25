@@ -55,14 +55,11 @@ this session, so walk through it yourself on the mini:
    sudo launchctl bootout system/com.antoine.jobsearchagent
    sudo rm /Library/LaunchDaemons/com.antoine.jobsearchagent.plist
    ```
-2. **Node must be installed system-wide (Homebrew), not via nvm.** Check
-   with `which node`; if it only resolves under `~/.nvm`, run
-   `brew install node`. This isn't optional: launchd services (both the
-   frontend's `serve` process and the runner itself) don't source shell rc
-   files, so nvm's PATH additions never reach them even though `npm`/`node`
-   work fine over plain SSH. The frontend plist's `PATH` env var already
-   points at both Homebrew prefixes (`/opt/homebrew/bin`, `/usr/local/bin`)
-   so it'll pick up whichever one `brew install` used — see the comments in
+2. **Confirm Node is available on a fixed, non-nvm path** (`which node`).
+   If it's only available via nvm, install it system-wide (e.g.
+   `brew install node`) — launchd services don't source shell rc files, so
+   nvm's PATH additions won't reach either the frontend's `serve` process or
+   the runner's `npm ci` step. See the comments in
    `com.antoine.jobsearchagent-frontend.plist` and `deploy.yml`.
 3. **First build, by hand** (the plists only *serve* what's already built,
    they don't build it):

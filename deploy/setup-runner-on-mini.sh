@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-TOKEN="${1:?Usage: $0 <REGISTRATION_TOKEN> (get one from Settings > Actions > Runners > New self-hosted runner)}"
+TOKEN="${1:?Usage: $0 <REGISTRATION_TOKEN> (get one from the repo's Settings > Actions > Runners > New self-hosted runner)}"
 REPO_URL="https://github.com/Aschmider24/job-seeker-agents"
 RUNNER_DIR="$HOME/actions-runner"
 
@@ -54,18 +54,19 @@ sudo ./svc.sh start
 
 echo "==> Checking Node availability for the runner (needed since the deploy"
 echo "    workflow now runs 'npm ci && npm run build' for the frontend) ..."
-echo "    Requirement: Node MUST be installed system-wide (Homebrew), not"
-echo "    via nvm — launchd services (the runner is one) don't source shell"
-echo "    rc files, so nvm's PATH changes never reach them even though"
-echo "    npm/node work fine over SSH."
 if command -v node >/dev/null 2>&1 && [[ "$(command -v node)" != "$HOME"/.nvm/* ]]; then
-  echo "    OK: node found at $(command -v node) (not under ~/.nvm)."
+  echo "    OK: node found at $(command -v node) (not under ~/.nvm, should be"
+  echo "    on the runner's launchd PATH too)."
 else
   echo "    WARNING: node is either missing or only found via nvm"
   echo "    ($(command -v node 2>/dev/null || echo 'not found in this shell'))."
-  echo "    Fix: 'brew install node' (uninstall/disable the nvm version"
-  echo "    first if both are on PATH, to avoid ambiguity about which one"
-  echo "    is actually running). See deploy/README.md."
+  echo "    launchd services (the runner is one) don't source shell rc"
+  echo "    files, so nvm's PATH changes won't apply to CI runs — 'npm ci'"
+  echo "    in the deploy workflow may fail with 'command not found' even"
+  echo "    though npm works fine over SSH. Fix: install Node system-wide"
+  echo "    (e.g. 'brew install node') so it's on a fixed PATH, or add an"
+  echo "    explicit PATH env var to the runner's own launchd service."
+  echo "    See deploy/README.md."
 fi
 
 echo "==> Done. Check status with: sudo $RUNNER_DIR/svc.sh status"
