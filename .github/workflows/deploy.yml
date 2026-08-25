@@ -39,13 +39,10 @@ jobs:
           source .venv/bin/activate
           pip install -q -r requirements.txt
 
-      # NOTE: if Node is managed via nvm on the mini rather than a fixed
-      # system path (Homebrew etc.), the runner's PATH may not include it
-      # even though `npm`/`node` work fine over SSH — launchd services (the
-      # runner itself runs as one) don't source shell rc files. If this
-      # step fails with "npm: command not found", either switch to a
-      # system-wide Node install or set an explicit PATH here. See
-      # deploy/README.md.
+      # Requires Node installed system-wide (Homebrew) on the mini, not via
+      # nvm — nvm only puts node/npm on PATH inside an interactive shell
+      # that sources ~/.zshrc, and this `run:` step (like launchd) doesn't
+      # go through one. See deploy/README.md.
       - name: Install frontend dependencies and build
         run: |
           cd "$HOME/job-search-agent/frontend"

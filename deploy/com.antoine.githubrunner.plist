@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.antoine.githubrunner</string>
+
+    <!-- runsvc.sh (written by actions-runner's svc.sh install) is the
+         intended entrypoint for running the listener as a service: it sets
+         up PATH from .path if present and keeps the listener alive. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/antoineschmider/actions-runner/runsvc.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/antoineschmider/actions-runner</string>
+
+    <key>UserName</key>
+    <string>antoineschmider</string>
+
+    <!-- Start on boot (no login required, unlike the LaunchAgent svc.sh
+         normally installs), restart automatically if it ever crashes -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/antoineschmider/actions-runner/runner.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/antoineschmider/actions-runner/runner.err.log</string>
+</dict>
+</plist>
