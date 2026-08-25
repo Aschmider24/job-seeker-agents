@@ -3,7 +3,12 @@
 A Streamlit app that uses the Claude API to help with job applications:
 
 - **Job Matcher** — paste (or fetch by URL) a job description and get a fit
-  score out of 10, strengths, gaps, and a tailored cover letter.
+  score out of 10 with strengths/gaps first. From there, generate a tailored
+  cover letter and/or a list of interview questions with ready-to-copy
+  replies. Both the cover letter and each reply are commentable — leave one
+  or more comments, then hit Send to regenerate that piece with your feedback
+  applied. The job name is optional (auto-filled from the description) and
+  can be renamed at any time.
 - **Interview Coach** — generates interview questions for a job you've
   already matched, then reviews your answers live, gives feedback, and
   proposes an improved version. Approved answers are stored in a small vector
@@ -32,6 +37,7 @@ job-search-agent/
 │       ├── job_description.txt
 │       ├── fit_analysis.md
 │       ├── cover_letter.md
+│       ├── quick_replies.md   # copy-paste interview question replies
 │       └── interview_answers.md
 ├── agent.py                   # standalone CLI: batch-analyze jobs/*.txt (legacy)
 └── requirements.txt
@@ -56,10 +62,15 @@ scoring and cover letters.
 streamlit run app.py
 ```
 
-1. **Job Matcher** — enter a job name, paste a job description (or fetch one
-   from a URL), and optionally add custom instructions (tone, what to
-   emphasize/avoid). Click **Analyze**. This saves the job description, fit
-   analysis, and cover letter to `memory/jobs/<job_name>/`.
+1. **Job Matcher** — paste a job description (or fetch one from a URL),
+   optionally add custom instructions (tone, what to emphasize/avoid), and
+   click **Analyze**. The job name is optional — leave it blank and it's
+   derived from the description; rename it at any time from the "Saved as…"
+   expander. Analyze saves the job description and fit score/strengths/gaps
+   to `memory/jobs/<job_name>/` and shows the score first. From there, pick
+   **Generate cover letter** and/or **Get interview questions** (then **Get
+   replies for all questions**). Comment on the cover letter or any reply and
+   hit **Send** to regenerate it with your feedback applied.
 2. **Interview Coach** — pick a job you've already matched, generate
    questions, and answer them one at a time. Each answer gets feedback and an
    improved version; approving one stores it in the vector DB and saves it to

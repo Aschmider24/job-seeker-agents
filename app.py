@@ -11,10 +11,16 @@ import httpx
 import streamlit as st
 from dotenv import load_dotenv
 
-from agents.interview_coach import InterviewFeedback, generate_questions, get_feedback
-from agents.job_matcher import JobMatchResult, analyze_job
+from agents.interview_coach import (
+    InterviewFeedback,
+    answer_questions,
+    generate_questions,
+    get_feedback,
+    revise_answer,
+)
+from agents.job_matcher import JobScoreResult, generate_cover_letter, save_score, score_job
 from rag import store_answer
-from shared_context import list_jobs, load_job_context
+from shared_context import list_jobs, load_job_context, rename_job, save_job_file
 
 load_dotenv()
 
@@ -67,13 +73,29 @@ def _fetch_job_description(url: str) -> str:
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _show_match_result(result: JobMatchResult) -> None:
+def _unique_slug(name: str, exclude: set | None = None) -> str:
+    """Slugify `name` (e.g. the model's suggested_name) and dedupe against existing jobs."""
+    exclude = exclude or set()
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:50].strip("-")
+    if not slug:
+        slug = "job"
+
+    existing = set(list_jobs()) - exclude
+    candidate = slug
+    n = 2
+    while candidate in existing:
+        candidate = f"{slug}-{n}"
+        n += 1
+    return candidate
+
+
+def _show_fit_score(result: JobScoreResult) -> None:
     st.divider()
     col1, col2, col3 = st.columns([1, 2, 2])
 
     with col1:
         color = "green" if result.fit_score >= 7 else ("orange" if result.fit_score >= 5 else "red")
-        st.markdown(f"### Fit score")
+        st.markdown("### Fit score")
         st.markdown(f"<h1 style='color:{color}'>{result.fit_score} / 10</h1>", unsafe_allow_html=True)
 
     with col2:
@@ -86,23 +108,90 @@ def _show_match_result(result: JobMatchResult) -> None:
         for g in result.gaps:
             st.markdown(f"- {g}")
 
-    with st.expander("Cover letter", expanded=False):
-        st.markdown(result.cover_letter)
-        st.download_button(
-            "Download cover letter",
-            data=result.cover_letter,
-            file_name="cover_letter.md",
-            mime="text/markdown",
-        )
+
+def _comment_widget(pending_key: str, history_key: str, on_send, item_label: str = "this") -> None:
+    """Comment box + pending chips + a Send button that only appears once there's something to send.
+
+    `on_send(all_comments)` runs when Send is pressed (all comments ever left on this
+    item, oldest first) and is expected to regenerate the content and store it itself.
+    """
+    st.session_state.setdefault(pending_key, [])
+    st.session_state.setdefault(history_key, [])
+    nonce_key = f"{pending_key}__nonce"
+    st.session_state.setdefault(nonce_key, 0)
+    pending = st.session_state[pending_key]
+
+    for c in pending:
+        st.caption(f"💬 {c}")
+
+    input_key = f"{pending_key}__input_{st.session_state[nonce_key]}"
+    new_comment = st.text_input(
+        "Add a comment",
+        key=input_key,
+        label_visibility="collapsed",
+        placeholder=f"Suggest a change to {item_label}…",
+    )
+    c1, c2 = st.columns([1, 5])
+    with c1:
+        if st.button("Add comment", key=f"{pending_key}__add", disabled=not new_comment.strip()):
+            pending.append(new_comment.strip())
+            st.session_state[nonce_key] += 1
+            st.rerun()
+    with c2:
+        if pending and st.button("Send", key=f"{pending_key}__send", type="primary"):
+            combined = st.session_state[history_key] + pending
+            with st.spinner("Applying your feedback…"):
+                try:
+                    on_send(list(combined))
+                except Exception as exc:
+                    st.error(str(exc))
+                else:
+                    st.session_state[history_key] = combined
+                    st.session_state[pending_key] = []
+                    st.rerun()
+
+
+def _save_quick_replies(job_name: str, qa_slots: list) -> None:
+    answered = [s for s in qa_slots if s.get("reply")]
+    if not answered:
+        return
+    md = "\n\n".join(f"**Q{i}. {s['question']}**\n\n{s['reply']}" for i, s in enumerate(answered, 1))
+    save_job_file(job_name, "quick_replies.md", md)
+
+
+def _clear_state_with_prefixes(*prefixes: str) -> None:
+    for k in list(st.session_state.keys()):
+        if k.startswith(prefixes):
+            del st.session_state[k]
 
 
 # ── Job Matcher ───────────────────────────────────────────────────────────────
 
 if page == "🎯  Job Matcher":
     st.title("Job Matcher")
-    st.caption("Paste a job description (or provide a URL) to get a fit score, strengths/gaps analysis, and a tailored cover letter.")
+    st.caption(
+        "Paste a job description (or provide a URL) to get a fit score first. "
+        "From there, generate a cover letter and/or draft replies to the "
+        "application form's own questions — everything the AI writes can be "
+        "refined with comments."
+    )
 
-    job_name = st.text_input("Job name", placeholder="e.g. stripe-backend-engineer")
+    # ── init session state ────────────────────────────────────────────────────
+    jm_defaults = {
+        "jm_active_job": None,     # str | None — job currently being worked on
+        "jm_score": None,          # JobScoreResult | None
+        "jm_cover_letter": None,   # str | None
+        "jm_qa_slots": [],         # list[{"question": str, "reply": str | None}]
+    }
+    for k, v in jm_defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+    job_name_field = st.text_input(
+        "Job name",
+        key="jm_name_field",
+        placeholder="optional — auto-filled from the description if left blank",
+    )
 
     url_col, btn_col = st.columns([5, 1])
     with url_col:
@@ -129,30 +218,154 @@ if page == "🎯  Job Matcher":
         key="jm_desc",
     )
 
-    custom_instructions = st.text_area(
-        "Instructions for this application (optional)",
-        height=80,
-        placeholder="e.g. keep it formal, this is a corporate/banking client · "
-                     "or: casual tone, small startup · "
-                     "or: don't mention relocation, emphasize the ML projects",
-        key="jm_instructions",
-    )
+    if st.button("Analyze", type="primary", disabled=not job_description.strip()):
+        prior_active = st.session_state.jm_active_job
 
-    if st.button("Analyze", type="primary", disabled=not (job_name and job_description)):
         with st.spinner("Analyzing…"):
             try:
-                result = analyze_job(job_name.strip(), job_description.strip(), custom_instructions.strip())
-                st.session_state[f"jm_{job_name}"] = result
-                st.success(f"Saved to memory/jobs/{job_name.strip()}/")
+                score = score_job(job_description.strip())
             except Exception as exc:
                 st.error(str(exc))
-                result = None
+                score = None
 
-        if result:
-            _show_match_result(result)
+        if score:
+            typed_name = job_name_field.strip()
+            if typed_name:
+                job_name = typed_name
+            elif prior_active:
+                job_name = prior_active  # blank field on re-analyze = keep updating the same job
+            else:
+                job_name = _unique_slug(score.suggested_name)
 
-    elif f"jm_{job_name}" in st.session_state:
-        _show_match_result(st.session_state[f"jm_{job_name}"])
+            save_score(job_name, job_description.strip(), score)
+            st.session_state.jm_active_job = job_name
+            st.session_state.jm_score = score
+            st.session_state.jm_cover_letter = None
+            st.session_state.jm_qa_slots = []
+            # drop any comment / compose-box state left over from a previous
+            # job's cover letter or application questions
+            _clear_state_with_prefixes(
+                "jm_cl_pending", "jm_cl_history",
+                "jm_qa_pending_", "jm_qa_history_", "jm_qa_input_",
+            )
+            st.rerun()
+
+    active = st.session_state.jm_active_job
+    score = st.session_state.jm_score
+
+    if active and score:
+        _show_fit_score(score)
+
+        # ── rename (works at any time once a job has been saved) ─────────────
+        with st.expander(f"📁 Saved as **{active}** — rename"):
+            new_name = st.text_input("New name", value=active, key=f"jm_rename_field__{active}")
+            if new_name.strip() and new_name.strip() != active and st.button("Rename"):
+                try:
+                    rename_job(active, new_name.strip())
+                    st.session_state.jm_active_job = new_name.strip()
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+
+        custom_instructions = st.text_area(
+            "Instructions for this application (optional)",
+            height=80,
+            placeholder="e.g. keep it formal, this is a corporate/banking client · "
+                         "or: casual tone, small startup · "
+                         "or: don't mention relocation, emphasize the ML projects",
+            key="jm_instructions",
+        )
+
+        # ── what's next: cover letter and/or application-form questions ───────
+        st.markdown("### What's next?")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.session_state.jm_cover_letter is None:
+                if st.button("✉️  Generate cover letter", type="primary"):
+                    with st.spinner("Writing cover letter…"):
+                        try:
+                            letter = generate_cover_letter(active, custom_instructions.strip())
+                        except Exception as exc:
+                            st.error(str(exc))
+                        else:
+                            st.session_state.jm_cover_letter = letter
+                            st.rerun()
+        with col2:
+            if st.button("➕  Add specific question"):
+                st.session_state.jm_qa_slots.append({"question": "", "reply": None})
+                st.rerun()
+
+        # ── cover letter ───────────────────────────────────────────────────────
+        if st.session_state.jm_cover_letter:
+            st.divider()
+            st.markdown("### Cover letter")
+            st.markdown(st.session_state.jm_cover_letter)
+            st.download_button(
+                "Download cover letter",
+                data=st.session_state.jm_cover_letter,
+                file_name=f"{active}_cover_letter.md",
+                mime="text/markdown",
+            )
+
+            def _resend_cover_letter(all_comments: list) -> None:
+                feedback_text = "\n".join(f"- {c}" for c in all_comments)
+                st.session_state.jm_cover_letter = generate_cover_letter(
+                    active, custom_instructions.strip(), feedback=feedback_text
+                )
+
+            _comment_widget("jm_cl_pending", "jm_cl_history", _resend_cover_letter, "the cover letter")
+
+        # ── application form questions, added and answered one at a time ──────
+        if st.session_state.jm_qa_slots:
+            st.divider()
+            st.markdown("### Application form questions")
+            st.caption(
+                "Type a question from the application form and get a draft reply, "
+                "ready to copy back into the form."
+            )
+
+            for i, slot in enumerate(st.session_state.jm_qa_slots):
+                with st.container(border=True):
+                    if slot["reply"] is None:
+                        q_text = st.text_input(
+                            f"Question {i + 1}",
+                            key=f"jm_qa_input_{i}",
+                            placeholder="e.g. Why do you want to work at this company?",
+                        )
+                        if st.button("Get reply", key=f"jm_qa_getreply_{i}", disabled=not q_text.strip()):
+                            with st.spinner("Writing reply…"):
+                                try:
+                                    reply = answer_questions(
+                                        active, [q_text.strip()], custom_instructions.strip()
+                                    )[0]
+                                except Exception as exc:
+                                    st.error(str(exc))
+                                else:
+                                    slot["question"] = q_text.strip()
+                                    slot["reply"] = reply
+                                    _save_quick_replies(active, st.session_state.jm_qa_slots)
+                                    st.rerun()
+                    else:
+                        st.markdown(f"**{i + 1}. {slot['question']}**")
+                        st.write(slot["reply"])
+
+                        def _make_resend(idx):
+                            def _resend(all_comments: list) -> None:
+                                feedback_text = "\n".join(f"- {c}" for c in all_comments)
+                                s = st.session_state.jm_qa_slots[idx]
+                                s["reply"] = revise_answer(
+                                    active, s["question"], s["reply"], feedback_text,
+                                    custom_instructions.strip(),
+                                )
+                                _save_quick_replies(active, st.session_state.jm_qa_slots)
+                            return _resend
+
+                        _comment_widget(
+                            f"jm_qa_pending_{i}",
+                            f"jm_qa_history_{i}",
+                            _make_resend(i),
+                            f"reply {i + 1}",
+                        )
 
 
 # ── Past Matches ──────────────────────────────────────────────────────────────
@@ -209,6 +422,10 @@ elif page == "📁  Past Matches":
                         mime="text/markdown",
                         key=f"dl_{job}",
                     )
+
+            if "quick_replies" in ctx:
+                with st.expander("Application form question replies", expanded=False):
+                    st.markdown(ctx["quick_replies"])
 
             if "interview_answers" in ctx:
                 with st.expander("Interview answers", expanded=False):
