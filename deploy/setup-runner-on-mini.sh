@@ -18,11 +18,8 @@ REPO_URL="https://github.com/Aschmider24/job-seeker-agents"
 RUNNER_DIR="$HOME/actions-runner"
 
 echo "==> Adding scoped passwordless-sudo rule for the deploy restart step ..."
-# Two services now (backend + frontend, see deploy/*.plist) instead of one.
-{
-  echo "antoineschmider ALL=(root) NOPASSWD: /bin/launchctl kickstart -k system/com.antoine.jobsearchagent-backend"
-  echo "antoineschmider ALL=(root) NOPASSWD: /bin/launchctl kickstart -k system/com.antoine.jobsearchagent-frontend"
-} | sudo tee /etc/sudoers.d/jobsearchagent-deploy > /dev/null
+LINE="antoineschmider ALL=(root) NOPASSWD: /bin/launchctl kickstart -k system/com.antoine.jobsearchagent"
+echo "$LINE" | sudo tee /etc/sudoers.d/jobsearchagent-deploy > /dev/null
 sudo chmod 0440 /etc/sudoers.d/jobsearchagent-deploy
 sudo visudo -cf /etc/sudoers.d/jobsearchagent-deploy
 echo "    OK."
@@ -51,23 +48,6 @@ echo "==> Registering runner with $REPO_URL ..."
 echo "==> Installing runner as a system service (requires sudo) ..."
 sudo ./svc.sh install
 sudo ./svc.sh start
-
-echo "==> Checking Node availability for the runner (needed since the deploy"
-echo "    workflow now runs 'npm ci && npm run build' for the frontend) ..."
-if command -v node >/dev/null 2>&1 && [[ "$(command -v node)" != "$HOME"/.nvm/* ]]; then
-  echo "    OK: node found at $(command -v node) (not under ~/.nvm, should be"
-  echo "    on the runner's launchd PATH too)."
-else
-  echo "    WARNING: node is either missing or only found via nvm"
-  echo "    ($(command -v node 2>/dev/null || echo 'not found in this shell'))."
-  echo "    launchd services (the runner is one) don't source shell rc"
-  echo "    files, so nvm's PATH changes won't apply to CI runs — 'npm ci'"
-  echo "    in the deploy workflow may fail with 'command not found' even"
-  echo "    though npm works fine over SSH. Fix: install Node system-wide"
-  echo "    (e.g. 'brew install node') so it's on a fixed PATH, or add an"
-  echo "    explicit PATH env var to the runner's own launchd service."
-  echo "    See deploy/README.md."
-fi
 
 echo "==> Done. Check status with: sudo $RUNNER_DIR/svc.sh status"
 echo "    Push to main on GitHub to trigger a deploy."

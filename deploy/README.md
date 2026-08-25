@@ -1,12 +1,10 @@
 # Deploying to the Mac mini
 
 Code lives on GitHub (public repo, showcase). The live app runs on the
-author's home Mac mini as **two separate services** — a FastAPI backend
-(`com.antoine.jobsearchagent-backend`, port 8000) and a static-served React
-frontend (`com.antoine.jobsearchagent-frontend`, port 4173) — kept in sync by
-a GitHub Actions self-hosted runner installed on the mini itself (see
-`setup-runner-on-mini.sh`). Pushing to `main` (i.e. merging a PR from `dev`)
-auto-deploys via `.github/workflows/deploy.yml`.
+author's home Mac mini, kept in sync by a GitHub Actions self-hosted runner
+installed on the mini itself (see `setup-runner-on-mini.sh`). Pushing to
+`main` (i.e. merging a PR from `dev`) auto-deploys via
+`.github/workflows/deploy.yml`.
 
 ## Security model — READ BEFORE TOUCHING WORKFLOWS
 
@@ -44,57 +42,12 @@ See `setup-runner-on-mini.sh` — run it on the mini with a fresh runner
 registration token from the repo's Settings → Actions → Runners → New
 self-hosted runner.
 
-## Migrating from the old single-service (Streamlit) setup
-
-If the mini is still running the old `com.antoine.jobsearchagent` Streamlit
-service, it needs a one-time manual switch-over — none of this was run from
-this session, so walk through it yourself on the mini:
-
-1. **Stop and remove the old service:**
-   ```
-   sudo launchctl bootout system/com.antoine.jobsearchagent
-   sudo rm /Library/LaunchDaemons/com.antoine.jobsearchagent.plist
-   ```
-2. **Confirm Node is available on a fixed, non-nvm path** (`which node`).
-   If it's only available via nvm, install it system-wide (e.g.
-   `brew install node`) — launchd services don't source shell rc files, so
-   nvm's PATH additions won't reach either the frontend's `serve` process or
-   the runner's `npm ci` step. See the comments in
-   `com.antoine.jobsearchagent-frontend.plist` and `deploy.yml`.
-3. **First build, by hand** (the plists only *serve* what's already built,
-   they don't build it):
-   ```
-   cd ~/job-search-agent/backend && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-   cd ~/job-search-agent/frontend && npm ci && npm run build
-   ```
-4. **Verify `VITE_API_BASE_URL`** in `frontend/.env.production` and
-   `ALLOWED_ORIGINS` in `com.antoine.jobsearchagent-backend.plist` actually
-   match the mini's real Tailscale hostname/IP and ports — both currently
-   hold a best guess (`100.114.228.0`), not a verified value.
-5. **Install and start the two new services:**
-   ```
-   sudo cp deploy/com.antoine.jobsearchagent-backend.plist deploy/com.antoine.jobsearchagent-frontend.plist /Library/LaunchDaemons/
-   sudo launchctl bootstrap system /Library/LaunchDaemons/com.antoine.jobsearchagent-backend.plist
-   sudo launchctl bootstrap system /Library/LaunchDaemons/com.antoine.jobsearchagent-frontend.plist
-   ```
-6. **Re-run `setup-runner-on-mini.sh`** (or hand-edit
-   `/etc/sudoers.d/jobsearchagent-deploy`) — the passwordless-sudo rule was
-   scoped to the old single service label and needs both new ones. The
-   script also now checks Node's PATH situation for you.
-
-Steps 2 and 6 are the two things most likely to silently break the *next*
-push-to-main deploy even after the switch-over above succeeds — see
-`setup-runner-on-mini.sh`'s Node check and the comments in `deploy.yml`.
-
 ## Manual fallback
 
 `deploy.sh` still works for a manual push if the runner/workflow is ever
-down: syncs `backend/` + `frontend/` over SSH, reinstalls deps, rebuilds the
-frontend, and restarts both services.
+down: syncs code over SSH and restarts the service.
 
 `pull-memory.sh` / `push-memory.sh` sync `memory/` (CV, jobs, chroma_db)
 between the laptop and the mini for local development against real data —
-unaffected by the backend/frontend split, `memory/` still lives at the repo
-root on both ends. See the main README for the workflow (mini is the source
-of truth; avoid running the backend on both against the same job data at
-once).
+see the main README for the workflow (mini is the source of truth; avoid
+running the app on both against the same job data at once).

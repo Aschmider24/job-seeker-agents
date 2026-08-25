@@ -25,34 +25,18 @@ jobs:
       - name: Sync code into the live app directory
         run: |
           rsync -av \
-            --exclude='backend/.venv/' --exclude='__pycache__/' \
-            --include='backend/***' \
-            --exclude='frontend/node_modules/' --exclude='frontend/dist/' \
-            --include='frontend/***' \
-            --include='README.md' --include='VERSION' \
+            --include='agents/***' \
+            --include='app.py' --include='agent.py' --include='prompts.py' \
+            --include='rag.py' --include='shared_context.py' \
+            --include='requirements.txt' --include='README.md' --include='VERSION' \
             --exclude='*' \
             "$GITHUB_WORKSPACE"/ "$HOME/job-search-agent/"
 
-      - name: Install backend dependencies
+      - name: Install dependencies
         run: |
-          cd "$HOME/job-search-agent/backend"
+          cd "$HOME/job-search-agent"
           source .venv/bin/activate
           pip install -q -r requirements.txt
 
-      # NOTE: if Node is managed via nvm on the mini rather than a fixed
-      # system path (Homebrew etc.), the runner's PATH may not include it
-      # even though `npm`/`node` work fine over SSH — launchd services (the
-      # runner itself runs as one) don't source shell rc files. If this
-      # step fails with "npm: command not found", either switch to a
-      # system-wide Node install or set an explicit PATH here. See
-      # deploy/README.md.
-      - name: Install frontend dependencies and build
-        run: |
-          cd "$HOME/job-search-agent/frontend"
-          npm ci
-          npm run build
-
-      - name: Restart the backend + frontend services
-        run: |
-          sudo launchctl kickstart -k system/com.antoine.jobsearchagent-backend
-          sudo launchctl kickstart -k system/com.antoine.jobsearchagent-frontend
+      - name: Restart the app service
+        run: sudo launchctl kickstart -k system/com.antoine.jobsearchagent
