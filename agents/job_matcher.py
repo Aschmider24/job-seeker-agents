@@ -1,8 +1,13 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import anthropic
 from pydantic import BaseModel, Field
 
-from app.prompts import JOB_MATCHER_SYSTEM, build_cv_context, build_job_block
-from app.shared_context import read_cv, read_projects, save_job_file
+from prompts import JOB_MATCHER_SYSTEM, build_cv_context, build_job_block
+from shared_context import read_cv, read_projects, save_job_file
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096

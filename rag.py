@@ -1,10 +1,10 @@
 """ChromaDB-backed store for approved interview answers."""
 
+from pathlib import Path
+
 import chromadb
 
-from app.shared_context import MEMORY_DIR
-
-DB_PATH = MEMORY_DIR / "chroma_db"
+DB_PATH = Path(__file__).parent / "memory" / "chroma_db"
 
 
 def _collection():
