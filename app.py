@@ -19,14 +19,29 @@ from agents.interview_coach import (
     revise_answer,
 )
 from agents.job_matcher import JobScoreResult, generate_cover_letter, save_score, score_job
-from rag import store_answer
-from shared_context import delete_job, list_jobs, load_job_context, rename_job, save_job_file
+from rag import delete_answer, list_answers, store_answer
+from shared_context import (
+    delete_extra_file,
+    delete_job,
+    list_extra_files,
+    list_jobs,
+    load_job_context,
+    read_cv,
+    read_extra_file,
+    read_projects_text,
+    rename_job,
+    save_cv,
+    save_extra_file,
+    save_extra_note,
+    save_job_file,
+    save_projects_text,
+)
 
 load_dotenv()
 
 st.set_page_config(page_title="Job Search Agent", page_icon="💼", layout="wide")
 
-NAV_PAGES = ["🎯  Job Matcher", "📁  Past Matches", "🎤  Interview Coach"]
+NAV_PAGES = ["🎯  Job Matcher", "📁  Past Matches", "🎤  Interview Coach", "🗂️  My Data"]
 if "nav_page" not in st.session_state:
     st.session_state["nav_page"] = NAV_PAGES[0]
 
@@ -600,3 +615,125 @@ elif page == "🎤  Interview Coach":
             st.session_state.ic_idx = 0
             st.session_state.ic_feedback = None
             st.rerun()
+
+
+# ── My Data ───────────────────────────────────────────────────────────────────
+
+elif page == "🗂️  My Data":
+    st.title("My Data")
+    st.caption(
+        "Everything the agent reads before scoring a job, writing a cover letter, "
+        "or running an interview session. Explore what's there, and add anything "
+        "relevant — files or pasted text — to improve future results."
+    )
+
+    # ── CV ─────────────────────────────────────────────────────────────────────
+    st.markdown("### CV")
+    try:
+        cv_text = read_cv()
+    except FileNotFoundError:
+        cv_text = None
+        st.warning("No CV uploaded yet. Add one below.")
+    else:
+        st.success(f"cv.pdf is loaded ({len(cv_text):,} characters extracted).")
+        with st.expander("Preview extracted text", expanded=False):
+            st.text(cv_text)
+
+    new_cv = st.file_uploader("Replace CV", type=["pdf"], key="md_cv_upload")
+    if st.button("Save CV", key="md_cv_save", disabled=new_cv is None):
+        save_cv(new_cv.getvalue())
+        st.success("CV updated.")
+        st.rerun()
+
+    st.divider()
+
+    # ── background / projects ─────────────────────────────────────────────────
+    st.markdown("### Background & projects")
+    st.caption(
+        "Free-text notes about yourself — side projects, achievements, anything "
+        "not already in the CV. Included in every generation, same as the CV."
+    )
+    projects_text = st.text_area(
+        "Background & projects",
+        value=read_projects_text(),
+        height=200,
+        key="md_projects_text",
+        label_visibility="collapsed",
+        placeholder="e.g. Built and open-sourced a Chrome extension with 5k users; "
+                    "led migration to Kubernetes at a previous job; …",
+    )
+    if st.button("Save", key="md_projects_save"):
+        save_projects_text(projects_text)
+        st.success("Saved.")
+        st.rerun()
+
+    st.divider()
+
+    # ── additional reference files / notes ────────────────────────────────────
+    st.markdown("### Additional files & notes")
+    st.caption(
+        "Upload documents (PDF, txt, md) or paste text — portfolio write-ups, "
+        "certificates, performance reviews, anything else relevant. All of it is "
+        "folded into the same context as your CV and background."
+    )
+
+    st.session_state.setdefault("md_extra_note_nonce", 0)
+    nonce = st.session_state["md_extra_note_nonce"]
+
+    upload_col, note_col = st.columns(2)
+    with upload_col:
+        extra_upload = st.file_uploader(
+            "Add a file", type=["pdf", "txt", "md"], key=f"md_extra_upload_{nonce}"
+        )
+        if st.button("Save file", key="md_extra_upload_save", disabled=extra_upload is None):
+            save_extra_file(extra_upload.name, extra_upload.getvalue())
+            st.session_state["md_extra_note_nonce"] += 1
+            st.success(f"Saved {extra_upload.name}.")
+            st.rerun()
+    with note_col:
+        note_title = st.text_input(
+            "Note title", key=f"md_extra_note_title_{nonce}", placeholder="e.g. Side project: XYZ"
+        )
+        note_body = st.text_area(
+            "Note text", key=f"md_extra_note_body_{nonce}", height=100,
+            placeholder="Paste any relevant text…",
+        )
+        if st.button(
+            "Save note", key="md_extra_note_save",
+            disabled=not (note_title.strip() and note_body.strip()),
+        ):
+            save_extra_note(note_title.strip(), note_body.strip())
+            st.session_state["md_extra_note_nonce"] += 1
+            st.success("Saved.")
+            st.rerun()
+
+    extras = list_extra_files()
+    if extras:
+        st.markdown("#### Saved")
+        for fname in extras:
+            with st.expander(fname, expanded=False):
+                st.text(read_extra_file(fname))
+                if st.button("🗑️  Delete", key=f"md_extra_delete_{fname}"):
+                    delete_extra_file(fname)
+                    st.rerun()
+    else:
+        st.caption("Nothing added yet.")
+
+    st.divider()
+
+    # ── approved interview answers ────────────────────────────────────────────
+    st.markdown("### Approved interview answers")
+    st.caption(
+        "Answers you approved in Interview Coach — reused as reference examples "
+        "when giving feedback on future answers."
+    )
+    answers = list_answers()
+    if not answers:
+        st.caption("None yet.")
+    else:
+        for a in answers:
+            with st.expander(f"**{a['job']}** — {a['question']}", expanded=False):
+                st.write(a["answer"])
+                if st.button("🗑️  Delete", key=f"md_ans_delete_{a['id']}"):
+                    delete_answer(a["id"])
+                    st.rerun()
