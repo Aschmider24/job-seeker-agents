@@ -174,6 +174,14 @@ def _save_quick_replies(job_name: str, qa_slots: list) -> None:
     save_job_file(job_name, "quick_replies.md", md)
 
 
+def _parse_quick_replies(md: str) -> list:
+    """Parse quick_replies.md content back into [{"question": str, "reply": str}, ...]."""
+    if not md.strip():
+        return []
+    pattern = re.compile(r"\*\*Q\d+\.\s*(.+?)\*\*\n\n(.*?)(?=\n\n\*\*Q\d+\.|\Z)", re.S)
+    return [{"question": q.strip(), "reply": r.strip()} for q, r in pattern.findall(md)]
+
+
 def _clear_state_with_prefixes(*prefixes: str) -> None:
     for k in list(st.session_state.keys()):
         if k.startswith(prefixes):
@@ -427,20 +435,96 @@ elif page == "📁  Past Matches":
                 with st.expander("Job description", expanded=False):
                     st.text(ctx["job_description"])
 
-            if "cover_letter" in ctx:
-                with st.expander("Cover letter", expanded=False):
-                    st.markdown(ctx["cover_letter"])
-                    st.download_button(
-                        "Download cover letter",
-                        data=ctx["cover_letter"],
-                        file_name=f"{job}_cover_letter.md",
-                        mime="text/markdown",
-                        key=f"dl_{job}",
-                    )
+            pm_instructions = st.text_area(
+                "Instructions for this application (optional)",
+                height=80,
+                placeholder="e.g. keep it formal, this is a corporate/banking client · "
+                             "or: casual tone, small startup · "
+                             "or: don't mention relocation, emphasize the ML projects",
+                key=f"pm_instructions_{job}",
+            )
 
-            if "quick_replies" in ctx:
-                with st.expander("Application form question replies", expanded=False):
-                    st.markdown(ctx["quick_replies"])
+            # ── cover letter ───────────────────────────────────────────────────
+            st.markdown("#### Cover letter")
+            if "cover_letter" in ctx:
+                st.markdown(ctx["cover_letter"])
+                st.download_button(
+                    "Download cover letter",
+                    data=ctx["cover_letter"],
+                    file_name=f"{job}_cover_letter.md",
+                    mime="text/markdown",
+                    key=f"dl_{job}",
+                )
+
+                def _make_resend_cover_letter(job_name, instructions):
+                    def _resend(all_comments: list) -> None:
+                        feedback_text = "\n".join(f"- {c}" for c in all_comments)
+                        generate_cover_letter(job_name, instructions.strip(), feedback=feedback_text)
+                    return _resend
+
+                _comment_widget(
+                    f"pm_cl_pending_{job}", f"pm_cl_history_{job}",
+                    _make_resend_cover_letter(job, pm_instructions), "the cover letter",
+                )
+            else:
+                if st.button("✉️  Generate cover letter", key=f"pm_cl_generate_{job}"):
+                    with st.spinner("Writing cover letter…"):
+                        try:
+                            generate_cover_letter(job, pm_instructions.strip())
+                        except Exception as exc:
+                            st.error(str(exc))
+                        else:
+                            st.rerun()
+
+            # ── application form questions ───────────────────────────────────────
+            st.markdown("#### Application form questions")
+            slots_key = f"pm_qa_slots_{job}"
+            if slots_key not in st.session_state:
+                st.session_state[slots_key] = _parse_quick_replies(ctx.get("quick_replies", ""))
+            qa_slots = st.session_state[slots_key]
+
+            for i, slot in enumerate(qa_slots):
+                with st.container(border=True):
+                    if slot["reply"] is None:
+                        q_text = st.text_input(
+                            f"Question {i + 1}",
+                            key=f"pm_qa_input_{job}_{i}",
+                            placeholder="e.g. Why do you want to work at this company?",
+                        )
+                        if st.button("Get reply", key=f"pm_qa_getreply_{job}_{i}", disabled=not q_text.strip()):
+                            with st.spinner("Writing reply…"):
+                                try:
+                                    reply = answer_questions(job, [q_text.strip()], pm_instructions.strip())[0]
+                                except Exception as exc:
+                                    st.error(str(exc))
+                                else:
+                                    slot["question"] = q_text.strip()
+                                    slot["reply"] = reply
+                                    _save_quick_replies(job, qa_slots)
+                                    st.rerun()
+                    else:
+                        st.markdown(f"**{i + 1}. {slot['question']}**")
+                        st.write(slot["reply"])
+
+                        def _make_resend_qa(job_name, idx, instructions):
+                            def _resend(all_comments: list) -> None:
+                                feedback_text = "\n".join(f"- {c}" for c in all_comments)
+                                slots = st.session_state[f"pm_qa_slots_{job_name}"]
+                                s = slots[idx]
+                                s["reply"] = revise_answer(
+                                    job_name, s["question"], s["reply"], feedback_text, instructions.strip(),
+                                )
+                                _save_quick_replies(job_name, slots)
+                            return _resend
+
+                        _comment_widget(
+                            f"pm_qa_pending_{job}_{i}", f"pm_qa_history_{job}_{i}",
+                            _make_resend_qa(job, i, pm_instructions), f"reply {i + 1}",
+                        )
+
+            if st.button("➕  Add specific question", key=f"pm_qa_add_{job}"):
+                qa_slots.append({"question": "", "reply": None})
+                st.rerun()
 
             if "interview_answers" in ctx:
                 with st.expander("Interview answers", expanded=False):
