@@ -35,3 +35,19 @@ def retrieve_similar(question: str, n_results: int = 3) -> list:
         {"answer": doc, "job": meta["job_name"], "question": meta["question"]}
         for doc, meta in zip(results["documents"][0], results["metadatas"][0])
     ]
+
+
+def list_answers() -> list:
+    """All approved answers ever stored, for browsing/management."""
+    col = _collection()
+    if col.count() == 0:
+        return []
+    data = col.get()
+    return [
+        {"id": id_, "job": meta["job_name"], "question": meta["question"], "answer": doc}
+        for id_, doc, meta in zip(data["ids"], data["documents"], data["metadatas"])
+    ]
+
+
+def delete_answer(doc_id: str) -> None:
+    _collection().delete(ids=[doc_id])
