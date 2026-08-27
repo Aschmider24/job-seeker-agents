@@ -201,10 +201,11 @@ if page == "🎯  Job Matcher":
 
     # ── init session state ────────────────────────────────────────────────────
     jm_defaults = {
-        "jm_active_job": None,     # str | None — job currently being worked on
-        "jm_score": None,          # JobScoreResult | None
-        "jm_cover_letter": None,   # str | None
-        "jm_qa_slots": [],         # list[{"question": str, "reply": str | None}]
+        "jm_active_job": None,       # str | None — job currently being worked on
+        "jm_active_desc": None,      # str | None — description last analyzed for jm_active_job
+        "jm_score": None,            # JobScoreResult | None
+        "jm_cover_letter": None,     # str | None
+        "jm_qa_slots": [],           # list[{"question": str, "reply": str | None}]
     }
     for k, v in jm_defaults.items():
         if k not in st.session_state:
@@ -243,10 +244,12 @@ if page == "🎯  Job Matcher":
 
     if st.button("Analyze", type="primary", disabled=not job_description.strip()):
         prior_active = st.session_state.jm_active_job
+        desc_stripped = job_description.strip()
+        is_reanalyze = prior_active and desc_stripped == st.session_state.jm_active_desc
 
         with st.spinner("Analyzing…"):
             try:
-                score = score_job(job_description.strip())
+                score = score_job(desc_stripped)
             except Exception as exc:
                 st.error(str(exc))
                 score = None
@@ -255,13 +258,14 @@ if page == "🎯  Job Matcher":
             typed_name = job_name_field.strip()
             if typed_name:
                 job_name = typed_name
-            elif prior_active:
-                job_name = prior_active  # blank field on re-analyze = keep updating the same job
+            elif is_reanalyze:
+                job_name = prior_active  # same description re-analyzed = keep updating the same job
             else:
                 job_name = _unique_slug(score.suggested_name)
 
-            save_score(job_name, job_description.strip(), score)
+            save_score(job_name, desc_stripped, score)
             st.session_state.jm_active_job = job_name
+            st.session_state.jm_active_desc = desc_stripped
             st.session_state.jm_score = score
             st.session_state.jm_cover_letter = None
             st.session_state.jm_qa_slots = []
